@@ -51,6 +51,7 @@ class LocalWebUiBackend(
                 }
             }
             .map { it.packageName }
+            .distinct()
             .sorted()
         return JSONArray(packageNames).toString()
     }
@@ -58,22 +59,28 @@ class LocalWebUiBackend(
     override fun getPackagesInfo(packageNamesJson: String): String {
         val packageNames = JSONArray(packageNamesJson)
         val jsonArray = JSONArray()
-        val appMap = packageRepository.packages.value.associateBy { it.packageName }
+        val appMap = packageRepository.packages.value.groupBy { it.packageName }
         for (i in 0 until packageNames.length()) {
             val pkgName = packageNames.getString(i)
-            val pkg = appMap[pkgName]
-            val obj = JSONObject()
-            obj.put("packageName", pkg?.packageName ?: pkgName)
-            if (pkg != null) {
+            val matches = appMap[pkgName]
+            if (matches.isNullOrEmpty()) {
+                val obj = JSONObject()
+                obj.put("packageName", pkgName)
+                obj.put("error", "Package not found or inaccessible")
+                jsonArray.put(obj)
+                continue
+            }
+            for (pkg in matches.sortedBy { it.uid }) {
+                val obj = JSONObject()
+                obj.put("packageName", pkg.packageName)
                 obj.put("versionName", pkg.versionName)
                 obj.put("versionCode", pkg.versionCode)
                 obj.put("appLabel", pkg.appLabel)
                 obj.put("isSystem", pkg.isSystem)
                 obj.put("uid", pkg.uid)
-            } else {
-                obj.put("error", "Package not found or inaccessible")
+                obj.put("userId", if (pkg.uid >= 0) pkg.uid / 100000 else JSONObject.NULL)
+                jsonArray.put(obj)
             }
-            jsonArray.put(obj)
         }
         return jsonArray.toString()
     }

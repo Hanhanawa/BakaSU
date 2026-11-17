@@ -3,6 +3,7 @@ package org.bakasu.bakasu.ui.webui
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -36,6 +37,22 @@ import org.bakasu.bakasu.data.webui.WebUiBackend
 import org.bakasu.bakasu.data.webui.WebUiRepository
 import org.bakasu.bakasu.ui.viewmodel.SuperUserUiAction
 import org.bakasu.bakasu.ui.viewmodel.SuperUserViewModel
+
+private const val INTERNAL_BLOB_DOWNLOAD_HOST = "blob-download.kernelsu.internal"
+
+private fun loadDownloadJs(context: Context): String = context.assets.open("webview/download.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+fun Activity.setTaskDescription(label: String) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        @Suppress("DEPRECATION")
+        setTaskDescription(ActivityManager.TaskDescription(label))
+    } else {
+        val taskDescription = ActivityManager.TaskDescription.Builder()
+            .setLabel(label)
+            .build()
+        setTaskDescription(taskDescription)
+    }
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 internal suspend fun prepareWebView(
@@ -199,6 +216,7 @@ internal fun createWebView(
 
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
             val url = request.url
+            BlobDownloadHandler.shouldInterceptRequest(request)?.let { return it }
             if (url.scheme.equals("ksu", ignoreCase = true) && url.host.equals("icon", ignoreCase = true)) {
                 val packageName = url.path?.substring(1)
                 if (!packageName.isNullOrEmpty()) {
@@ -233,6 +251,7 @@ internal fun createWebView(
         override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
             webUIState.webCanGoBack = view?.canGoBack() ?: false
             if (webUIState.isInsetsEnabled) webUIState.webView?.evaluateJavascript(webUIState.currentInsets.js, null)
+            view?.evaluateJavascript(loadDownloadJs(activity), null)
             super.doUpdateVisitedHistory(view, url, isReload)
         }
     }
@@ -287,7 +306,17 @@ internal fun createWebView(
 
     // JS Interface
     val webviewInterface = WebViewInterface(webUIState, backend)
+    val downloadInterface = WebUIDownloadInterface(webUIState)
+    webUIState.webViewInterface = webviewInterface
+    webUIState.downloadInterface = downloadInterface
     webUIState.webView = webView
     webView.addJavascriptInterface(webviewInterface, "ksu")
+    webView.addJavascriptInterface(downloadInterface, "ksu_download")
+    webView.setDownloadListener { url, _, _, _, _ ->
+        if (Uri.parse(url).host != INTERNAL_BLOB_DOWNLOAD_HOST) {
+            downloadInterface.openExternal(url)
+        }
+    }
+    webView.evaluateJavascript(loadDownloadJs(activity), null)
     webUIState.uiEvent = WebUIEvent.WebViewReady
 }

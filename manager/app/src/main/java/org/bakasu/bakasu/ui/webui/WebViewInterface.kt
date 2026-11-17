@@ -10,7 +10,10 @@ import android.widget.Toast
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import java.io.File
+import org.bakasu.bakasu.data.webui.LocalWebUiBackend
 import org.bakasu.bakasu.data.webui.WebUiBackend
+import org.bakasu.bakasu.ui.webui.file.KsuIO
+import org.bakasu.bakasu.ui.webui.pm.KsuPm
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -184,15 +187,30 @@ class WebViewInterface(
         return currentModuleInfo.toString()
     }
 
+    @Deprecated("Use ksu.pm().listPackages() instead")
     @JavascriptInterface
     fun listPackages(type: String): String = backend.listPackages(type)
 
+    @Deprecated("Use ksu.pm().getPackagesInfo() instead")
     @JavascriptInterface
     fun getPackagesInfo(packageNamesJson: String): String = backend.getPackagesInfo(packageNamesJson)
 
     @JavascriptInterface
     fun exit() {
         state.requestExit()
+    }
+
+    @JavascriptInterface
+    fun io(): KsuIO {
+        check(backend is LocalWebUiBackend) { "File interfaces require a local module WebUI" }
+        return KsuIO
+    }
+
+    @JavascriptInterface
+    fun pm() = KsuPm(backend)
+
+    fun destroy() {
+        if (backend is LocalWebUiBackend) KsuIO.destroy()
     }
 }
 

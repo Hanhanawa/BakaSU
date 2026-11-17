@@ -95,7 +95,7 @@ class RemoteWebUIActivity : ComponentActivity() {
                     pageInitialized = true
                     BridgeActivityLaunch.ready(intent.getStringExtra(BridgeActivityLaunch.REQUEST))
                 }
-                DisposableEffect(Unit) { onDispose { webUIState.dispose() } }
+                DisposableEffect(Unit) { onDispose { webUIState.dispose(this@RemoteWebUIActivity) } }
 
                 when (val event = webUIState.uiEvent) {
                     is WebUIEvent.Error -> LaunchedEffect(event) {
