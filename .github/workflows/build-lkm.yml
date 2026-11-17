@@ -1,38 +1,58 @@
 name: Build LKM for KernelSU
+
 on:
+  workflow_dispatch:
   workflow_call:
     inputs:
       expected_pr_build_size:
-        description: 'Second expected signature size (for PR builds)'
         required: false
         default: ''
         type: string
       expected_pr_build_hash:
-        description: 'Second expected signature hash (for PR builds)'
         required: false
         default: ''
         type: string
-  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
-  build-lkm:
-    strategy:
-      fail-fast: false
-      matrix:
-        kmi:
-          - android12-5.10
-          - android13-5.10
-          - android13-5.15
-          - android14-5.15
-          - android14-6.1
-          - android15-6.6
-          - android16-6.12
-          - android17-6.18
-        arch:
-          - arm64
-          - x86_64
-    uses: ./.github/workflows/ddk-lkm.yml
-    with:
-      kmi: ${{ matrix.kmi }}
-      arch: ${{ matrix.arch }}
-      expected_pr_build_size: ${{ inputs.expected_pr_build_size || '' }}
-      expected_pr_build_hash: ${{ inputs.expected_pr_build_hash || '' }}
+  build-wear-avd:
+    if: github.repository == 'Hanhanawa/BakaSU'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Prepare disk for the DDK image
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Fetch the Wear AVD kernel source
+        run: |
+          mkdir -p "$RUNNER_TEMP/wear-avd"
+          curl --fail --location --retry 3 \
+            https://android.googlesource.com/kernel/common/+archive/ccafb60de224d35a8bc14de33e1cd47caaaa786b.tar.gz \
+            --output "$RUNNER_TEMP/wear-avd/common.tar.gz"
+      - name: Build the module for Wear OS XL Round
+        run: |
+          docker run --rm --cpus 4 --memory 10g \
+            -v "$GITHUB_WORKSPACE:/src" \
+            -v "$RUNNER_TEMP/wear-avd:/work" \
+            ghcr.io/ylarod/ddk-min:android16-6.12-20260828 \
+            bash /src/.github/scripts/build-wear-avd-lkm.sh
+      - name: Upload Wear AVD module
+        uses: actions/upload-artifact@v7
+        with:
+          name: wear-avd-6.12.58-x86_64-lkm
+          path: ${{ runner.temp }}/wear-avd/out/kernelsu.ko
+          if-no-files-found: error
+          retention-days: 3
+      - name: Upload compiler logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: wear-avd-build-logs
+          path: ${{ runner.temp }}/wear-avd/out/*.log
+          retention-days: 3
